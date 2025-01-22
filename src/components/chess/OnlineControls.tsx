@@ -13,13 +13,31 @@ export const OnlineControls = () => {
 
   const handleCreateRoom = () => {
     createRoom();
-    
-    toast.success('Room created! Share the ID with your opponent');
+    toast.promise(
+      new Promise((resolve) => {
+        setTimeout(resolve, 500);
+      }),
+      {
+        loading: 'Creating room...',
+        success: 'Room created! Share the ID with your opponent',
+        error: 'Failed to create room'
+      }
+    );
   };
 
   const handleJoinRoom = () => {
     if (joinId) {
-      joinRoom(joinId);
+      toast.promise(
+        new Promise((resolve, reject) => {
+          joinRoom(joinId);
+          setTimeout(resolve, 500);
+        }),
+        {
+          loading: 'Joining room...',
+          success: 'Joined room successfully!',
+          error: 'Failed to join room'
+        }
+      );
     }
   };
 

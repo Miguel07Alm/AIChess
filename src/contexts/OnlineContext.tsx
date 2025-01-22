@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Square } from 'chess.js';
+import type { ClientToServerEvents, ServerToClientEvents } from '@/types/socket';
 
 interface OnlineContextType {
   isOnline: boolean;
@@ -18,7 +18,7 @@ interface OnlineContextType {
 const OnlineContext = createContext<OnlineContextType | null>(null);
 
 export function OnlineProvider({ children }: { children: React.ReactNode }) {
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket<ServerToClientEvents, ClientToServerEvents> | null>(null);
   const [isOnline, setIsOnline] = useState(false);
   const [roomId, setRoomId] = useState<string | null>(null);
   const [playerColor, setPlayerColor] = useState<'w' | 'b' | null>(null);
@@ -26,20 +26,33 @@ export function OnlineProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Primero hacemos un request para asegurarnos que el servidor WebSocket está corriendo
-    fetch('/api/socket')
-      .then(() => {
-        const newSocket = io({
-          path: '/api/socket',
-          addTrailingSlash: false
-        });
-        setSocket(newSocket);
+    if (typeof window !== 'undefined') {
+      const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL, {
+          path: "/api/socketio",
+          transports: ["websocket"],
+          autoConnect: true,
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+      });
 
-        return () => {
-          newSocket.close();
-        };
-      })
-      .catch(console.error);
+      newSocket.on('connect', () => {
+        console.log('Connected to socket server');
+        setError(null);
+      });
+
+      newSocket.on('connect_error', (err) => {
+        console.error('Connection error:', err);
+        setError('Connection failed. Please try again.');
+        setIsConnecting(false);
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
+    }
   }, []);
 
   const createRoom = useCallback(() => {
