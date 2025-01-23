@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import { ChatMessage, GameMove } from "@/types/webrtc";
 import { experimental_useObject as useObject } from "ai/react";
 import { ChessSchema, ChessSchemaPayload } from "@/types/chat";
-import { getChosenMove, getAIChatResponse, maybeAIWillTalk } from "@/app/actions";
 
 type BoardPosition = (Piece | null)[][];
 
@@ -198,7 +197,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                     lastMove: lastMove ? `${lastMove.from}->${lastMove.to}` : null,
                 };
 
-                const result = await getChosenMove(chatPayload);
+                const res = await fetch("/api/chess/move", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify(chatPayload),
+                });
+                const result: {
+                    chosenMove: number;
+                } = await res.json();
                 console.log("[AI] makeAIMove ~ result:", result)
 
                 if (result.chosenMove >= 0 && result.chosenMove < moves.length) {
@@ -357,7 +365,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                             currenBoard: boardState,
                             lastMove: lastMove ? `${lastMove.from}->${lastMove.to}` : null,
                         };
-                        const {willTalk, comment: AIComment} = await maybeAIWillTalk(chatPayload);
+                        const res = await fetch("/api/chess/analysis", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify(chatPayload),
+                        });
+                        const {willTalk, comment: AIComment}: {
+                            willTalk: boolean;
+                            comment: string;
+                        } = await res.json();
                         console.log("🚀 ~ willTalk:", willTalk)
                         if (willTalk && AIComment) {
                             setMessages([
@@ -420,13 +438,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
             // Obtener el último movimiento en notación algebraica
             const lastMoveStr = moves.length > 0 ? moves[moves.length - 1].san : null;
-
-            const AIText = await getAIChatResponse({
-                history: recentMessages,
-                currentBoard: boardState,
-                lastMove: lastMoveStr,
-                playerColor: playerColor || 'w'
+            const res = await fetch("/api/chess/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    history: recentMessages,
+                    currentBoard: boardState,
+                    lastMove: lastMoveStr,
+                    playerColor: playerColor || "w",
+                }),
             });
+            const {text: AIText}: {
+                text: string;
+            } = await res.json();
 
             // Añadir mensaje de la IA al chat
             setMessages([
