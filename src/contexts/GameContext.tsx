@@ -5,9 +5,15 @@ import {
     useEffect,
     useState,
     useCallback,
+    Dispatch,
 } from "react";
 import { Chess, Square, Move, PieceSymbol, Color, Piece } from "chess.js";
-import { useOnline } from "./OnlineContext";
+import { useRTC } from "./RTCContext";
+import { toast } from "sonner";
+import { ChatMessage, GameMove } from "@/types/webrtc";
+import { experimental_useObject as useObject } from "ai/react";
+import { ChessSchema, ChessSchemaPayload } from "@/types/chat";
+import { getChosenMove, getAIChatResponse, maybeAIWillTalk } from "@/app/actions";
 
 type BoardPosition = (Piece | null)[][];
 
@@ -19,14 +25,15 @@ interface GameContextType {
     timeWhite: number;
     timeBlack: number;
     capturedPieces: { white: PieceSymbol[]; black: PieceSymbol[] };
-    makeMove: (from: Square, to: Square) => boolean;
+    makeMove: (from: Square, to: Square, isRemoteMove?: boolean) => Promise<boolean>;
     setSelectedSquare: (square: Square | null) => void;
     getLegalMoves: (square: Square) => Square[];
     currentTurn: () => Color;
     lastMove: { from: Square; to: Square } | null;
-    gameMode: 'ai' | 'online' | null;
-    setGameMode: (mode: 'ai' | 'online' | null) => void;
+    gameMode: "ai" | "online" | null;
+    setGameMode: (mode: "ai" | "online" | null) => void;
     isGameStarted: boolean;
+    setIsGameStarted: (started: boolean) => void;
     gameHistory: {
         position: BoardPosition;
         move: Move | null;
@@ -37,12 +44,19 @@ interface GameContextType {
     navigateHistory: (index: number) => void;
     startReview: () => void;
     stopReview: () => void;
+    isHost: boolean;
+    playerColor: "w" | "b" | null;
+    boardOrientation: "white" | "black";
+    messages: ChatMessage[];
+    setMessages: Dispatch<ChatMessage[]>;
+    aiThinking: boolean;
+    sendAIMessage: (messages: ChatMessage[]) => Promise<void>;
 }
 
 const GameContext = createContext<GameContextType | null>(null);
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
-    const [gameMode, setGameMode] = useState<'ai' | 'online' | null>(null);
+    const [gameMode, setGameMode] = useState<"ai" | "online" | null>(null);
     const [game] = useState(new Chess());
     const [position, setPosition] = useState<(Piece | null)[][]>(game.board());
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
@@ -60,30 +74,82 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         to: Square;
     } | null>(null);
     const [isGameStarted, setIsGameStarted] = useState(false);
-    const [gameHistory, setGameHistory] = useState<GameContextType['gameHistory']>([]);
+    const [gameHistory, setGameHistory] = useState<
+        GameContextType["gameHistory"]
+    >([]);
     const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
     const [isReviewing, setIsReviewing] = useState(false);
 
-    const { socket, roomId, isOnline } = useOnline();
+    const {
+        setMessageHandlers,
+        isHost: rtcIsHost,
+        playerColor: rtcPlayerColor,
+        isConnected,
+        sendTimeSync,
+    } = useRTC();
+    const [isHost, setIsHost] = useState(false);
+    const [playerColor, setPlayerColor] = useState<"w" | "b" | null>(null);
+    const [boardOrientation, setBoardOrientation] = useState<"white" | "black">(
+        "white"
+    );
+    const [messages, setMessages] = useState<ChatMessage[]>([]);
+    const [aiThinking, setAiThinking] = useState(false);
 
+    // Sincronizar con RTCContext
     useEffect(() => {
-        // Timer solo corre si:
-        // 1. El juego ha empezado (ambos jugadores en online)
-        // 2. No es online (modo AI o local)
-        const shouldRunTimer = isGameStarted || !isOnline;
-        
+        setIsHost(rtcIsHost);
+        if (rtcPlayerColor) {
+            setPlayerColor(rtcPlayerColor);
+            setBoardOrientation(rtcPlayerColor === "w" ? "white" : "black");
+        }
+    }, [rtcIsHost, rtcPlayerColor]);
+
+    // Actualizar la orientación del tablero cuando cambie el color del jugador o el modo de juego
+    useEffect(() => {
+        if (gameMode === "ai") {
+            setBoardOrientation("white"); // Siempre blancas en modo AI
+        } else if (playerColor) {
+            setBoardOrientation(playerColor === "w" ? "white" : "black");
+        }
+    }, [playerColor, gameMode]);
+
+    // Modificar el efecto del timer
+    useEffect(() => {
+        const shouldRunTimer =
+            isGameStarted &&
+            (gameMode === "ai" || (gameMode === "online" && isConnected));
+
+        if (!shouldRunTimer) return;
+
+        const lastUpdate = { current: Date.now() };
         const timer = setInterval(() => {
-            if (shouldRunTimer && !game.isGameOver() && timeWhite > 0 && timeBlack > 0) {
-                if (game.turn() === "w") {
-                    setTimeWhite((prev) => Math.max(0, prev - 1));
-                } else {
-                    setTimeBlack((prev) => Math.max(0, prev - 1));
+            if (!game.isGameOver() && timeWhite > 0 && timeBlack > 0) {
+                const now = Date.now();
+                const elapsed = Math.floor((now - lastUpdate.current) / 1000);
+                lastUpdate.current = now;
+
+                if (elapsed > 0) {
+                    if (game.turn() === "w") {
+                        const newTime = Math.max(0, timeWhite - elapsed);
+                        setTimeWhite(newTime);
+                        // Solo el host sincroniza los tiempos
+                        if (gameMode === "online" && rtcIsHost) {
+                            sendTimeSync(newTime, timeBlack);
+                        }
+                    } else {
+                        const newTime = Math.max(0, timeBlack - elapsed);
+                        setTimeBlack(newTime);
+                        // Solo el host sincroniza los tiempos
+                        if (gameMode === "online" && rtcIsHost) {
+                            sendTimeSync(timeWhite, newTime);
+                        }
+                    }
                 }
             }
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [game, timeWhite, timeBlack, isGameStarted, isOnline]);
+    }, [game, timeWhite, timeBlack, isGameStarted, gameMode, isConnected, rtcIsHost, sendTimeSync]);
 
     const handleCapture = useCallback((move: Move) => {
         if (move.captured) {
@@ -96,83 +162,380 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             });
         }
     }, []);
-    const makeMove = useCallback(
-        (from: Square, to: Square) => {
+
+    const makeAIMove = useCallback(async () => {
+        const moves = game.moves({ verbose: true });
+        if (moves.length > 0) {
             try {
+                console.log('[AI] Getting move suggestion...');
+                const boardState = game.board()
+                    .map((row) =>
+                        row
+                            .map((piece) =>
+                                piece ? `${piece.color}${piece.type}` : "--"
+                            )
+                            .join(" ")
+                    )
+                    .join("\n");
+
+                // Crear una lista de movimientos legibles
+                const movesList = moves
+                    .map(
+                        (move, index) =>
+                            `${index}: ${move.color} ${move.piece} ${
+                                move.from
+                            }->${move.to}${
+                                move.captured
+                                    ? ` captures ${move.captured}`
+                                    : ""
+                            }`
+                    )
+                    .join("\n");
+                const chatPayload: ChessSchemaPayload = {
+                    moves: movesList,
+                    playerColor: playerColor as Color,
+                    currenBoard: boardState,
+                    lastMove: lastMove ? `${lastMove.from}->${lastMove.to}` : null,
+                };
+
+                const result = await getChosenMove(chatPayload);
+                console.log("[AI] makeAIMove ~ result:", result)
+
+                if (result.chosenMove >= 0 && result.chosenMove < moves.length) {
+                    const selectedMove = moves[result.chosenMove];
+                    console.log('[AI] Selected move:', selectedMove);
+
+                    if (selectedMove.from && selectedMove.to) {
+                        const moveResult = game.move({
+                            from: selectedMove.from as Square,
+                            to: selectedMove.to as Square,
+                            promotion: "q",
+                        });
+
+                        if (moveResult) {
+                            setPosition(game.board());
+                            setMoves(game.history({ verbose: true }));
+                            handleCapture(moveResult);
+                            setSelectedSquare(null);
+                            setLastMove({
+                                from: selectedMove.from as Square,
+                                to: selectedMove.to as Square,
+                            });
+                            setGameHistory((prev) => [
+                                ...prev,
+                                {
+                                    position: game.board(),
+                                    move: moveResult,
+                                    capturedPieces: { ...capturedPieces },
+                                },
+                            ]);
+                            return true;
+                        }
+                    }
+                }
+                throw new Error('Invalid AI move');
+            } catch (error) {
+                console.error('[AI] Error making move:', error);
+                // Fallback a movimiento aleatorio
+                const randomMove = moves[Math.floor(Math.random() * moves.length)];
+                console.log('[AI] Using fallback random move:', randomMove);
+                const moveResult = game.move({
+                    from: randomMove.from as Square,
+                    to: randomMove.to as Square,
+                    promotion: "q",
+                });
+                if (moveResult) {
+                    setPosition(game.board());
+                    setMoves(game.history({ verbose: true }));
+                    handleCapture(moveResult);
+                    setSelectedSquare(null);
+                    setLastMove({
+                        from: randomMove.from as Square,
+                        to: randomMove.to as Square,
+                    });
+                    setGameHistory((prev) => [
+                        ...prev,
+                        {
+                            position: game.board(),
+                            move: moveResult,
+                            capturedPieces: { ...capturedPieces },
+                        },
+                    ]);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }, [game, handleCapture, capturedPieces]);
+
+    // Modificar makeMove para manejar mejor los movimientos remotos
+    const makeMove = useCallback(
+        async (from: Square, to: Square, isRemoteMove: boolean = false) => {
+            try {
+                console.log("[Game] Attempting move:", {
+                    from,
+                    to,
+                    playerColor,
+                    currentTurn: game.turn(),
+                    isRemoteMove,
+                    boardOrientation,
+                });
+
+                // Solo verificar turno para movimientos locales
+                if (
+                    !isRemoteMove &&
+                    gameMode === "online" &&
+                    game.turn() !== playerColor
+                ) {
+                    console.warn("[Game] Not your turn");
+                    return false;
+                }
+
                 const moveResult = game.move({ from, to, promotion: "q" });
                 if (moveResult) {
+                    // Asegurarse de que la posición se actualice correctamente
                     const newPosition = game.board();
+                    console.log("[Game] Move successful:", {
+                        from,
+                        to,
+                        newPosition: newPosition.map((row) =>
+                            row.map((piece) => piece?.type || null)
+                        ),
+                    });
+
                     setPosition(newPosition);
                     setMoves(game.history({ verbose: true }));
                     handleCapture(moveResult);
                     setSelectedSquare(null);
                     setLastMove({ from, to });
 
-                    // Guardar el estado en el historial
-                    setGameHistory(prev => [...prev, {
-                        position: newPosition,
-                        move: moveResult,
-                        capturedPieces: { ...capturedPieces }
-                    }]);
+                    setGameHistory((prev) => [
+                        ...prev,
+                        {
+                            position: newPosition,
+                            move: moveResult,
+                            capturedPieces: { ...capturedPieces },
+                        },
+                    ]);
 
-                    // Emit move to opponent if online
-                    if (isOnline && socket && roomId) {
-                        socket.emit("move", { from, to, roomId });
+                    // Sincronizar tiempos después de cada movimiento si somos el host
+                    if (gameMode === "online" && rtcIsHost) {
+                        sendTimeSync(timeWhite, timeBlack);
                     }
 
-                    // AI move if in AI mode and it's black's turn
-                    if (gameMode === 'ai' && game.turn() === 'b') {
-                        setTimeout(() => {
-                            makeAIMove();
+                    // AI move if in AI mode
+                    if (gameMode === "ai" && !game.isGameOver()) {
+                        const boardState = game
+                            .board()
+                            .map((row) =>
+                                row
+                                    .map((piece) =>
+                                        piece
+                                            ? `${piece.color}${piece.type}`
+                                            : "--"
+                                    )
+                                    .join(" ")
+                            )
+                            .join("\n");
+
+                        // Crear una lista de movimientos legibles
+                        const movesList = moves
+                            .map(
+                                (move, index) =>
+                                    `${index}: ${move.color} ${move.piece} ${
+                                        move.from
+                                    }->${move.to}${
+                                        move.captured
+                                            ? ` captures ${move.captured}`
+                                            : ""
+                                    }`
+                            )
+                            .join("\n");
+                        const chatPayload: ChessSchemaPayload = {
+                            moves: movesList,
+                            playerColor: playerColor as Color,
+                            currenBoard: boardState,
+                            lastMove: lastMove ? `${lastMove.from}->${lastMove.to}` : null,
+                        };
+                        const {willTalk, comment: AIComment} = await maybeAIWillTalk(chatPayload);
+                        console.log("🚀 ~ willTalk:", willTalk)
+                        if (willTalk && AIComment) {
+                            setMessages([
+                                ...messages,
+                                {
+                                    text: AIComment,
+                                    sender: "b",
+                                    timestamp: Date.now(),
+                                    isSystem: true,
+                                },
+                            ]);
+                        }
+                        // Usar setTimeout para dar tiempo a que la UI se actualice
+                        setTimeout(async () => {
+                            const aiMoveSuccess = await makeAIMove();
+                            if (!aiMoveSuccess) {
+                                toast.error('AI failed to make a move');
+                            }
                         }, 500);
                     }
 
                     return true;
                 }
             } catch (e) {
-                console.error(e);
+                console.error("[Game] Move error:", e);
             }
             return false;
         },
-        [game, handleCapture, socket, roomId, isOnline, gameMode, capturedPieces]
+        [
+            game,
+            handleCapture,
+            gameMode,
+            capturedPieces,
+            playerColor,
+            boardOrientation,
+            rtcIsHost,
+            sendTimeSync,
+            timeWhite,
+            timeBlack,
+            makeAIMove
+        ]
     );
 
-    const makeAIMove = useCallback(() => {
-        const moves = game.moves({ verbose: true })
-        if (moves.length > 0) {
-            const move = moves[Math.floor(Math.random() * moves.length)]
-            if (move.from && move.to) {
-                makeMove(move.from as Square, move.to as Square)
-            }
+    // Añadir función para el chat con la IA
+    const sendAIMessage = useCallback(async (messages: ChatMessage[]) => {
+        if (gameMode !== "ai") return;
+        
+        try {
+            setAiThinking(true);
+            
+            // Preparar el historial del chat (últimos 5 mensajes)
+            const recentMessages = messages.slice(-5).map(m => 
+                `${m.sender ? 'Player' : 'AI'}: ${m.text}`
+            ).join('\n');
+
+            // Preparar el estado actual del tablero
+            const boardState = game.board()
+                .map(row => row.map(piece => piece ? `${piece.color}${piece.type}` : '--').join(' '))
+                .join('\n');
+
+            // Obtener el último movimiento en notación algebraica
+            const lastMoveStr = moves.length > 0 ? moves[moves.length - 1].san : null;
+
+            const AIText = await getAIChatResponse({
+                history: recentMessages,
+                currentBoard: boardState,
+                lastMove: lastMoveStr,
+                playerColor: playerColor || 'w'
+            });
+
+            // Añadir mensaje de la IA al chat
+            setMessages([
+                ...messages,
+                {
+                    text: AIText,
+                    sender: 'b',
+                    timestamp: Date.now(),
+                    isSystem: false,
+                },
+            ]);
+        } catch (error) {
+            console.error('[AI] Chat error:', error);
+            toast.error('Failed to get AI response');
+        } finally {
+            setAiThinking(false);
         }
-    }, [game])
+    }, [gameMode, messages, game, moves, playerColor]);
 
-    useEffect(() => {
-        if (!socket) return;
-
-        socket.on("opponent-move", ({ from, to }) => {
-            makeMove(from, to);
+    // Modificar setupMessageHandlers para ser más robusto
+    const setupMessageHandlers = useCallback(() => {
+        console.log("[Game] Setting up message handlers:", {
+            isConnected,
+            playerColor,
+            gameMode,
+            isHost: rtcIsHost
         });
 
-        socket.on("game-start", () => {
-            // Reset game when both players join
-            game.reset();
-            setPosition(game.board());
-            setMoves([]);
-            setCapturedPieces({ white: [], black: [] });
-            setTimeWhite(600);
-            setTimeBlack(600);
-            setIsGameStarted(true);
-        });
+        if (!gameMode || gameMode !== "online") return;
 
-        return () => {
-            socket.off("opponent-move");
-            socket.off("game-start");
+        const handlers = {
+            onMove: (move: GameMove) => {
+                console.log("[Game] Received move:", {
+                    move,
+                    playerColor,
+                    currentTurn: game.turn(),
+                });
+                makeMove(move.from, move.to, true);
+            },
+            onGameStart: () => {
+                console.log("[Game] Received game-start signal");
+                game.reset();
+                setPosition(game.board());
+                setMoves([]);
+                setCapturedPieces({ white: [], black: [] });
+                setTimeWhite(600);
+                setTimeBlack(600);
+                setGameHistory([]);
+                setCurrentHistoryIndex(-1);
+                setIsReviewing(false);
+                setIsGameStarted(true);
+            },
+            onOpponentDisconnect: () => {
+                console.log("[Game] Opponent disconnected");
+                toast.error("Opponent left the game", {
+                    duration: 5000,
+                });
+                // Primero limpiar el estado del juego
+                game.reset();
+                setPosition(game.board());
+                setMoves([]);
+                setCapturedPieces({ white: [], black: [] });
+                setTimeWhite(600);
+                setTimeBlack(600);
+                setGameHistory([]);
+                setCurrentHistoryIndex(-1);
+                setIsReviewing(false);
+                setIsGameStarted(false);
+                // Finalmente cambiar el modo
+                setGameMode(null);
+            },
+            onChatMessage: (message: ChatMessage) => {
+                console.log("[Game] Received chat message:", message);
+                setMessages((prev) => [...prev, message]);
+            },
+            onTimeSync: (tw: number, tb: number) => {
+                if (!rtcIsHost) {
+                    setTimeWhite(tw);
+                    setTimeBlack(tb);
+                }
+            },
+            onConnectionEstablished: () => {
+                console.log("[Game] Both players connected");
+                setIsGameStarted(true);
+                setMessages(prev => [
+                    ...prev,
+                    {
+                        text: "Both players are connected. Game started!",
+                        sender: null,
+                        timestamp: Date.now(),
+                        isSystem: true
+                    }
+                ]);
+            }
         };
-    }, [socket, makeMove, game]);
 
-    // Reset game when game mode changes
+        setMessageHandlers(handlers);
+    }, [game, playerColor, rtcIsHost, gameMode, isConnected, makeMove]);
+
+    // Efecto unificado para configurar handlers
     useEffect(() => {
+        if (gameMode === "online") {
+            setupMessageHandlers();
+        }
+    }, [gameMode, playerColor, isConnected, setupMessageHandlers]);
+
+    // Reset effect cuando cambia el modo de juego
+    useEffect(() => {
+        // Reset game state
         game.reset();
         setPosition(game.board());
         setMoves([]);
@@ -185,7 +548,48 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         setGameHistory([]);
         setCurrentHistoryIndex(-1);
         setIsReviewing(false);
-    }, [gameMode, game]);
+        setMessages([]); // Reset messages también
+
+        if (gameMode === "ai") {
+            setBoardOrientation("white");
+            setPlayerColor("w");
+            setIsGameStarted(true);
+        } else if (gameMode === null) {
+            setPlayerColor(null);
+            setBoardOrientation("white");
+            setMessageHandlers({}); // Limpiar handlers cuando se sale del modo online
+        }
+    }, [gameMode]);
+
+    // Add effect to monitor game start state
+    useEffect(() => {
+        if (gameMode === "online" && isGameStarted) {
+            console.log("[Game] Online game started:", {
+                isHost,
+                playerColor,
+                currentTurn: game.turn(),
+            });
+        }
+    }, [gameMode, isGameStarted, isHost, playerColor, game]);
+
+    // Añadir efecto para manejar la limpieza del estado
+    useEffect(() => {
+        return () => {
+            if (gameMode === 'online') {
+                setGameMode(null);
+                setIsGameStarted(false);
+                game.reset();
+                setPosition(game.board());
+                setMoves([]);
+                setCapturedPieces({ white: [], black: [] });
+                setTimeWhite(600);
+                setTimeBlack(600);
+                setGameHistory([]);
+                setCurrentHistoryIndex(-1);
+                setIsReviewing(false);
+            }
+        };
+    }, [gameMode]);
 
     const getLegalMoves = useCallback(
         (square: Square) => {
@@ -201,30 +605,33 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const currentTurn = useCallback(() => game.turn(), [game]);
 
-    const navigateHistory = useCallback((index: number) => {
-        if (index >= -1 && index < gameHistory.length) {
-            setCurrentHistoryIndex(index);
-            if (index === -1) {
-                game.reset();
-                setPosition(game.board());
-                setCapturedPieces({ white: [], black: [] });
-            } else {
-                const historyItem = gameHistory[index];
-                setPosition(historyItem.position);
-                setCapturedPieces(historyItem.capturedPieces);
+    const navigateHistory = useCallback(
+        (index: number) => {
+            if (index >= -1 && index < gameHistory.length) {
+                setCurrentHistoryIndex(index);
+                if (index !== -1) {
+                    const historyItem = gameHistory[index];
+                    setPosition(historyItem.position);
+                    setCapturedPieces(historyItem.capturedPieces);
+                }
             }
-        }
-    }, [gameHistory, game]);
+        },
+        [gameHistory]
+    );
 
     const startReview = useCallback(() => {
         setIsReviewing(true);
-        navigateHistory(-1);
-    }, [navigateHistory]);
+        console.log(
+            "🚀 ~ startReview ~ gameHistory.length:",
+            gameHistory.length
+        );
+        navigateHistory(gameHistory.length - 1);
+    }, [setIsReviewing, gameHistory, navigateHistory]);
 
     const stopReview = useCallback(() => {
         setIsReviewing(false);
         navigateHistory(gameHistory.length - 1);
-    }, [navigateHistory, gameHistory]);
+    }, [navigateHistory, gameHistory, setIsReviewing]);
 
     return (
         <GameContext.Provider
@@ -244,12 +651,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 gameMode,
                 setGameMode,
                 isGameStarted,
+                setIsGameStarted,
                 gameHistory,
                 currentHistoryIndex,
                 isReviewing,
                 navigateHistory,
                 startReview,
                 stopReview,
+                isHost,
+                playerColor,
+                boardOrientation,
+                messages,
+                setMessages,
+                aiThinking,
+                sendAIMessage,
             }}
         >
             {children}

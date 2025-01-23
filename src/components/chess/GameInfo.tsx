@@ -3,10 +3,11 @@ import { Card } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { ScrollArea } from '../ui/scroll-area'
 import { Chess } from 'chess.js'
-import { Fragment } from 'react'
+import { Fragment, useRef, useEffect } from 'react'
 import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Crown, Skull, Equal, AlertTriangle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface GameInfoProps {
   moves: Move[]
@@ -15,7 +16,7 @@ interface GameInfoProps {
   timeBlack: number
   game: Chess
   gameMode: 'ai' | 'online' | null
-  isGameStarted: boolean
+  isConnected: boolean
 }
 
 const formatTime = (time: number) => {
@@ -25,7 +26,7 @@ const formatTime = (time: number) => {
 }
 
 // Añadir objeto para valores de las piezas
-const PIECE_VALUES = {
+export const PIECE_VALUES = {
   p: 1,
   n: 3,
   b: 3,
@@ -35,15 +36,6 @@ const PIECE_VALUES = {
 } as const;
 
 const PieceBadge = ({ piece, color }: { piece: string, color: 'w' | 'b' }) => {
-  const pieceMap = {
-    p: 'pawn',
-    n: 'knight',
-    b: 'bishop',
-    r: 'rook',
-    q: 'queen',
-    k: 'king',
-  } as const;
-
   return (
     <div className="flex flex-col items-center">
       <div className="relative w-6 h-6">
@@ -158,16 +150,131 @@ const GameStatus = ({ game }: { game: Chess }) => {
   )
 }
 
-export const GameInfo = ({ 
-  moves, 
-  capturedPieces, 
-  timeWhite, 
-  timeBlack, 
-  game,
-  gameMode,
-  isGameStarted 
-}: GameInfoProps) => {
-  // Calcular puntos totales
+export const Timer = ({ timeWhite, timeBlack, game, gameMode, isConnected }: {
+  timeWhite: number;
+  timeBlack: number;
+  game: Chess;
+  gameMode: 'ai' | 'online' | null;
+  isConnected: boolean;
+}) => (
+  <Card className="p-3">
+    <div className="flex items-center justify-between mb-2">
+      <h3 className="text-base font-medium">Timer</h3>
+      {gameMode && (
+        <Badge variant="secondary" className="text-xs">
+          {gameMode === 'ai' ? 'VS AI' : (isConnected ? 'Online' : 'Waiting...')}
+        </Badge>
+      )}
+    </div>
+    <div className="grid grid-cols-2 gap-2">
+      <div className={cn(
+        "flex flex-col items-center p-2 rounded-lg transition-colors",
+        game.turn() === 'w' ? 'bg-[#007AFF]/10' : ''
+      )}>
+        <span className="font-mono text-xl font-semibold">{formatTime(timeWhite)}</span>
+        <span className="text-xs text-muted-foreground">White</span>
+      </div>
+      <div className={cn(
+        "flex flex-col items-center p-2 rounded-lg transition-colors",
+        game.turn() === 'b' ? 'bg-[#007AFF]/10' : ''
+      )}>
+        <span className="font-mono text-xl font-semibold">{formatTime(timeBlack)}</span>
+        <span className="text-xs text-muted-foreground">Black</span>
+      </div>
+    </div>
+  </Card>
+);
+
+export const MoveHistory = ({ moves }: { moves: Move[] }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll cuando se añaden nuevos movimientos
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
+    }
+  }, [moves]);
+
+  return (
+    <Card className="p-2">
+      <div 
+        ref={scrollContainerRef}
+        className="overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
+      >
+        <div className="inline-flex gap-2 px-1 h-8 items-center">
+          {moves.map((move, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={`
+                flex items-center gap-1 text-sm
+                ${i % 2 === 0 ? 'mr-1' : 'mr-3'}
+              `}
+            >
+              {i % 2 === 0 && (
+                <span className="text-muted-foreground font-mono text-xs">
+                  {Math.floor(i/2 + 1)}.
+                </span>
+              )}
+              <span className="font-medium bg-muted/50 px-1.5 py-0.5 rounded">
+                {move.san}
+              </span>
+            </motion.div>
+          ))}
+          {moves.length > 0 && (
+            <div className="w-4 h-full flex-shrink-0" />
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+export const CapturedPieces = ({
+  capturedPieces,
+  whitePoints,
+  blackPoints
+}: {
+  capturedPieces: GameInfoProps['capturedPieces'];
+  whitePoints: number;
+  blackPoints: number;
+}) => (
+  <Card className="p-3">
+    <h3 className="text-base font-medium mb-3">Captured Pieces</h3>
+    <div className="space-y-4">
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm text-muted-foreground">Black pieces</span>
+          {whitePoints > 0 && (
+            <span className="text-sm font-medium">+{whitePoints}</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {capturedPieces.white.map((piece, i) => (
+            <PieceBadge key={i} piece={piece} color="w" />
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-sm text-muted-foreground">White pieces</span>
+          {blackPoints > 0 && (
+            <span className="text-sm font-medium">+{blackPoints}</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {capturedPieces.black.map((piece, i) => (
+            <PieceBadge key={i} piece={piece} color="b" />
+          ))}
+        </div>
+      </div>
+    </div>
+  </Card>
+);
+
+// Main GameInfo component simplified
+export const GameInfo = ({ moves, capturedPieces, timeWhite, timeBlack, game, gameMode, isConnected }: GameInfoProps) => {
   const getPoints = (pieces: string[]) => 
     pieces.reduce((acc, piece) => acc + PIECE_VALUES[piece as keyof typeof PIECE_VALUES], 0);
 
@@ -175,84 +282,20 @@ export const GameInfo = ({
   const blackPoints = getPoints(capturedPieces.white);
 
   return (
-    <div className="flex flex-col gap-3 w-full">
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-1 gap-3">
-        <Card className="p-4 bg-white/10 backdrop-blur-sm dark:bg-black/10">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-medium">Timer</h3>
-            {gameMode && (
-              <Badge variant="secondary">
-                {gameMode === 'ai' ? 'VS AI' : (
-                  isGameStarted ? 'Online' : 'Waiting...'
-                )}
-              </Badge>
-            )}
-          </div>
-          <div className="flex justify-between">
-            <div className={`flex flex-col items-center p-3 rounded-lg transition-colors ${game.turn() === 'w' ? 'bg-[#007AFF]/10' : ''}`}>
-              <span className="font-mono text-2xl font-semibold">{formatTime(timeWhite)}</span>
-              <span className="text-sm text-neutral-500 mt-1">White</span>
-            </div>
-            <div className={`flex flex-col items-center p-3 rounded-lg transition-colors ${game.turn() === 'b' ? 'bg-[#007AFF]/10' : ''}`}>
-              <span className="font-mono text-2xl font-semibold">{formatTime(timeBlack)}</span>
-              <span className="text-sm text-neutral-500 mt-1">Black</span>
-            </div>
-          </div>
-        </Card>
-
-        <GameStatus game={game} />
-      </div>
-
-      <Card className="p-4">
-        <h3 className="text-base font-medium mb-3">Captured Pieces</h3>
-        <div className="space-y-4">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-neutral-500">Black pieces</span>
-              {whitePoints > 0 && (
-                <span className="text-sm font-medium">+{whitePoints}</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {capturedPieces.white.map((piece, i) => (
-                <PieceBadge key={i} piece={piece} color="w" />
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-neutral-500">White pieces</span>
-              {blackPoints > 0 && (
-                <span className="text-sm font-medium">+{blackPoints}</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {capturedPieces.black.map((piece, i) => (
-                <PieceBadge key={i} piece={piece} color="b" />
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-1 gap-2 sm:gap-4">
-        <Card className="p-2 sm:p-4">
-          <h3 className="text-base sm:text-lg font-bold mb-2">Move History</h3>
-          <ScrollArea className="h-[120px] sm:h-[200px] w-full">
-            <div className="grid grid-cols-[auto_1fr_1fr] gap-2 text-sm">
-              {moves.map((move, i) => (
-                i % 2 === 0 && (
-                  <Fragment key={i}>
-                    <span className="text-neutral-500">{Math.floor(i/2 + 1)}.</span>
-                    <span>{move.san}</span>
-                    <span>{moves[i+1]?.san || ''}</span>
-                  </Fragment>
-                )
-              ))}
-            </div>
-          </ScrollArea>
-        </Card>
-      </div>
+    <div className="flex flex-col gap-3">
+      <Timer
+        timeWhite={timeWhite}
+        timeBlack={timeBlack}
+        game={game}
+        gameMode={gameMode}
+        isConnected={isConnected}
+      />
+      <GameStatus game={game} />
+      <CapturedPieces
+        capturedPieces={capturedPieces}
+        whitePoints={whitePoints}
+        blackPoints={blackPoints}
+      />
     </div>
-  )
-}
+  );
+};

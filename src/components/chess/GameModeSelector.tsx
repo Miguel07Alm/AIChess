@@ -1,56 +1,57 @@
 "use client";
-import { Card } from "../ui/card"
-import { Button } from "../ui/button"
-import { Bot, Users } from "lucide-react"
-import { motion } from "framer-motion"
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
+import { Bot, Users } from 'lucide-react';
 
-interface GameModeSelectorProps {
-  onSelectMode: (mode: 'ai' | 'online' | null) => void
-  selectedMode: 'ai' | 'online' | null
+interface GameMode {
+  id: 'ai' | 'online';
+  label: string;
 }
 
-export const GameModeSelector = ({ onSelectMode, selectedMode }: GameModeSelectorProps) => {
+interface Props {
+  selectedMode: GameMode['id'] | null;
+  onSelectMode: (mode: GameMode['id'] | null) => void;
+}
+
+export const GameModeSelector = ({ selectedMode, onSelectMode }: Props) => {
+  const modes: GameMode[] = [
+    { id: 'ai', label: 'vs AI' },
+    { id: 'online', label: 'P2P Game' }
+  ];
+
+  const getIcon = (mode: GameMode['id']) => {
+    switch (mode) {
+      case 'ai': return <Bot className="w-4 h-4" />;
+      case 'online': return <Users className="w-4 h-4" />;
+    }
+  };
+
+  const handleModeSelect = (mode: GameMode['id']) => {
+    // Si ya hay un modo seleccionado, primero limpiarlo
+    if (selectedMode) {
+      onSelectMode(null);
+      localStorage.removeItem("lastRoomId"); // Limpiar cualquier roomId guardado
+    }
+    // Después establecer el nuevo modo
+    onSelectMode(mode);
+  };
+
   return (
-    <Card className="p-4 mb-4">
-      <h3 className="text-lg font-medium mb-4">Select Game Mode</h3>
-      <div className="flex gap-4">
-        <Button
-          variant={selectedMode === 'ai' ? 'default' : 'outline'}
-          className="flex-1 h-20"
-          onClick={() => onSelectMode(selectedMode === 'ai' ? null : 'ai')}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <Bot className="w-6 h-6" />
-            <span>VS AI</span>
-          </div>
-          {selectedMode === 'ai' && (
-            <motion.div
-              layoutId="activeMode"
-              className="absolute inset-0 bg-primary/10 rounded-md"
-              initial={false}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-            />
-          )}
-        </Button>
-        <Button
-          variant={selectedMode === 'online' ? 'default' : 'outline'}
-          className="flex-1 h-20 relative"
-          onClick={() => onSelectMode(selectedMode === 'online' ? null : 'online')}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <Users className="w-6 h-6" />
-            <span>Online</span>
-          </div>
-          {selectedMode === 'online' && (
-            <motion.div
-              layoutId="activeMode"
-              className="absolute inset-0 bg-primary/10 rounded-md"
-              initial={false}
-              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-            />
-          )}
-        </Button>
+    <Card className="p-4 w-full">
+      <div className="flex gap-2 w-full">
+        {modes.map((mode) => (
+          <Button
+            key={mode.id}
+            disabled={mode.id === "ai"}
+            variant={selectedMode === mode.id ? "default" : "outline"}
+            onClick={() => handleModeSelect(mode.id)}
+            className="flex gap-2"
+          >
+            {getIcon(mode.id)}
+            {mode.label}
+          </Button>
+        ))}
       </div>
     </Card>
-  )
-}
+  );
+};

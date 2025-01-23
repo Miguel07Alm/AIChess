@@ -2,7 +2,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/providers/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { GameProvider } from "@/contexts/GameContext"
-import { OnlineProvider } from "@/contexts/OnlineContext"
+import { RTCProvider } from "@/contexts/RTCContext"
 
 import { Geist } from 'next/font/google'
 
@@ -22,9 +22,9 @@ export default function RootLayout({
                   enableSystem
                   disableTransitionOnChange
               >
-                  <OnlineProvider>
+                  <RTCProvider>
                       <GameProvider>{children}</GameProvider>
-                  </OnlineProvider>
+                  </RTCProvider>
               </ThemeProvider>
               <Toaster />
           </body>
