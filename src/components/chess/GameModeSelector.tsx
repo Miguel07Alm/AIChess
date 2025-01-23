@@ -42,13 +42,17 @@ export const GameModeSelector = ({ selectedMode, onSelectMode }: Props) => {
         {modes.map((mode) => (
           <Button
             key={mode.id}
+            // Invertimos la lógica aquí: AI deshabilitado, online habilitado
             disabled={mode.id === "ai"}
             variant={selectedMode === mode.id ? "default" : "outline"}
             onClick={() => handleModeSelect(mode.id)}
-            className="flex gap-2"
+            className="flex gap-2 w-full"
           >
             {getIcon(mode.id)}
             {mode.label}
+            {mode.id === 'ai' && (
+              <span className="text-xs opacity-50">(Coming soon)</span>
+            )}
           </Button>
         ))}
       </div>

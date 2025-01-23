@@ -194,10 +194,15 @@ export const OnlineControls = () => {
         </Card>
     );
 
-    const JoinGameUI = () => (
-        <Card className="p-4">
+    const JoinGameUI = () => {
+        // Prevenir pérdida de foco
+        const handleSubmit = (e: React.FormEvent) => {
+            e.preventDefault();
+            handleJoinGame();
+        };
+
+        return (
             <div className="space-y-4">
-                {/* Create Game button */}
                 <Button
                     onClick={handleCreateGame}
                     disabled={isLoading}
@@ -216,20 +221,20 @@ export const OnlineControls = () => {
                     )}
                 </Button>
 
-                {/* Join Game section */}
                 <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">
                         Or join existing game:
                     </p>
-                    <div className="flex gap-2">
+                    <form onSubmit={handleSubmit} className="flex gap-2">
                         <Input
+                            autoFocus
                             placeholder="Room ID"
                             value={joinId}
                             onChange={(e) => setJoinId(e.target.value)}
                             disabled={isLoading}
                         />
                         <Button
-                            onClick={handleJoinGame}
+                            type="submit"
                             disabled={isLoading || !joinId}
                             className="shrink-0"
                         >
@@ -239,11 +244,11 @@ export const OnlineControls = () => {
                                 "Join"
                             )}
                         </Button>
-                    </div>
+                    </form>
                 </div>
             </div>
-        </Card>
-    );
+        );
+    };
 
     // Render logic
     if (isConnected) {

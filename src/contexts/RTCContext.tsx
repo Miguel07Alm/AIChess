@@ -85,9 +85,23 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
         console.log("[RTC] Creating new peer connection");
         const pc = new RTCPeerConnection({
             iceServers: [
+                // Añadir más servidores STUN/TURN para mejor conectividad
                 { urls: "stun:stun.l.google.com:19302" },
                 { urls: "stun:stun1.l.google.com:19302" },
+                { urls: "stun:stun2.l.google.com:19302" },
+                { urls: "stun:stun3.l.google.com:19302" },
+                { urls: "stun:stun4.l.google.com:19302" },
+                // Recomendado: Añadir un servidor TURN
+                // Necesitarás credenciales de un proveedor como Twilio o custom TURN
+                /*
+                {
+                    urls: "turn:your-turn-server.com:3478",
+                    username: "username",
+                    credential: "password"
+                }
+                */
             ],
+            iceCandidatePoolSize: 10
         });
 
         // Store in ref immediately
