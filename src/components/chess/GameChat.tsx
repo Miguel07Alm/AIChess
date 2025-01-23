@@ -22,12 +22,14 @@ export const GameChat = () => {
     const handleSendMessage = async (text: string) => {
         if (!text.trim()) return;
         if (gameMode === "online") {
-            sendChatMessage({
+            const newMessage: ChatMessage = {
                 text,
                 sender: playerColor,
                 timestamp: Date.now(),
                 isSystem: false
-            });
+            };
+            setMessages([...messages, newMessage]);
+            sendChatMessage(newMessage);
         } else if (gameMode === "ai") {
             // Añadir mensaje del usuario
             const newMessage: ChatMessage = {
