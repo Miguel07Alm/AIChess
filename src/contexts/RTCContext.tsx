@@ -81,27 +81,51 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
         setMessageHandlers(handlers);
     }, []);
 
-    const createPeerConnection = useCallback(() => {
+    // Añadir un buffer para candidatos ICE
+    const iceCandidatesBuffer = useRef<RTCIceCandidateInit[]>([]);
+
+    // Función para procesar candidatos ICE pendientes
+    const processPendingCandidates = useCallback(async () => {
+        if (!peerConnectionRef.current) return;
+
+        while (iceCandidatesBuffer.current.length > 0) {
+            const candidate = iceCandidatesBuffer.current.shift();
+            try {
+                await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+                console.log("[RTC] Successfully added buffered ICE candidate");
+            } catch (err) {
+                console.warn("[RTC] Failed to add buffered ICE candidate:", err);
+            }
+        }
+    }, []);
+
+    const createPeerConnection = useCallback(async () => {
         console.log("[RTC] Creating new peer connection");
+        const stun_servers = await fetch("/stun_servers.txt", {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+            },
+        })
+        const iceServers = await stun_servers.text()
         const pc = new RTCPeerConnection({
             iceServers: [
-                // Añadir más servidores STUN/TURN para mejor conectividad
-                { urls: "stun:stun.l.google.com:19302" },
-                { urls: "stun:stun1.l.google.com:19302" },
-                { urls: "stun:stun2.l.google.com:19302" },
-                { urls: "stun:stun3.l.google.com:19302" },
-                { urls: "stun:stun4.l.google.com:19302" },
-                // Recomendado: Añadir un servidor TURN
-                // Necesitarás credenciales de un proveedor como Twilio o custom TURN
-                /*
-                {
-                    urls: "turn:your-turn-server.com:3478",
-                    username: "username",
-                    credential: "password"
+            ...iceServers.split("\n")
+                .filter((url) => {
+                try {
+                    new URL(url);
+                    return true;
+                } catch {
+                    return false;
                 }
-                */
+                }).map((url) => ({ urls: `stun:${url}` })),
+            {
+                urls: "turn:relay1.expressturn.com:3478",
+                username: "efEJ83ZSNV3TUWBYYP", 
+                credential: "G5OZ5QXWGNCwENLG",
+            },
             ],
-            iceCandidatePoolSize: 10
+            iceCandidatePoolSize: 10,
         });
 
         // Store in ref immediately
@@ -161,6 +185,14 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
                     setIsConnected(false);
                     console.log("Peer connection closed");
                     break;
+            }
+        };
+
+        // Añadir manejador de estado de señalización
+        pc.onsignalingstatechange = () => {
+            console.log("[RTC] Signaling state changed:", pc.signalingState);
+            if (pc.signalingState === "stable") {
+                console.log("[RTC] Connection is stable");
             }
         };
 
@@ -331,25 +363,47 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
                                 continue;
                             }
 
+                            // Verificar el estado de la conexión
+                            if (!peerConnectionRef.current) {
+                                console.error("[RTC] No peer connection available");
+                                continue;
+                            }
+
+                            const currentState = peerConnectionRef.current.signalingState;
+                            console.log("[RTC] Current signaling state:", currentState);
+
+                            // Solo procesar la respuesta si estamos en el estado correcto
+                            if (currentState !== "have-local-offer") {
+                                console.log("[RTC] Incorrect state for processing answer:", currentState);
+                                continue;
+                            }
+
                             console.log("[RTC] Processing answer:", {
                                 from: message.clientId,
                                 sdpPreview: sdp.substring(0, 50) + "...",
+                                signalingState: currentState
                             });
 
-                            const desc = new RTCSessionDescription({
-                                type: "answer",
-                                sdp: sdp,
-                            });
+                            try {
+                                const desc = new RTCSessionDescription({
+                                    type: "answer",
+                                    sdp: sdp,
+                                });
 
-                            await peerConnectionRef.current.setRemoteDescription(
-                                desc
-                            );
-                            console.log(
-                                "[RTC] Remote description set successfully"
-                            );
+                                await peerConnectionRef.current.setRemoteDescription(desc);
+                                console.log("[RTC] Remote description set successfully");
+                                
+                                setConnectionEstablished(true);
+                                setIsConnected(true);
 
-                            setConnectionEstablished(true);
-                            setIsConnected(true);
+                                // Procesar candidatos ICE pendientes
+                                await processPendingCandidates();
+                            } catch (err) {
+                                console.error("[RTC] Error setting remote description:", {
+                                    error: err,
+                                    state: peerConnectionRef.current.signalingState
+                                });
+                            }
                         } else if (message.type === "ice-candidate") {
                             if (!message.payload) {
                                 console.error(
@@ -359,15 +413,23 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
                                 continue;
                             }
 
-                            console.log(
-                                "[RTC] Adding ICE candidate:",
-                                message.payload
-                            );
-                            await peerConnectionRef.current.addIceCandidate(
-                                new RTCIceCandidate(
-                                    message.payload as RTCIceCandidateInit
-                                )
-                            );
+                            // Si aún no hay descripción remota, almacenar el candidato
+                            if (!peerConnectionRef.current?.remoteDescription) {
+                                console.log("[RTC] Buffering ICE candidate for later");
+                                iceCandidatesBuffer.current.push(message.payload as RTCIceCandidateInit);
+                                continue;
+                            }
+
+                            // Si hay descripción remota, intentar añadir el candidato
+                            try {
+                                await peerConnectionRef.current.addIceCandidate(
+                                    new RTCIceCandidate(message.payload as RTCIceCandidateInit)
+                                );
+                                console.log("[RTC] Successfully added ICE candidate");
+                            } catch (err) {
+                                console.warn("[RTC] Failed to add ICE candidate, buffering:", err);
+                                iceCandidatesBuffer.current.push(message.payload as RTCIceCandidateInit);
+                            }
                         }
                     } catch (err) {
                         console.error("[RTC] Failed to process message:", {
@@ -410,7 +472,7 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
                 console.error("[RTC] Polling error:", error);
             }
         },
-        [clientId, isHostRef, disconnect] // Remove peerConnection from dependencies
+        [clientId, isHostRef, disconnect, processPendingCandidates] // Remove peerConnection from dependencies
     );
 
     const createGame = async () => {
@@ -423,7 +485,7 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
             setIsDataChannelOpen(false);
 
             // Create and store peer connection
-            const pc = createPeerConnection();
+            const pc = await createPeerConnection();
             peerConnectionRef.current = pc;
 
             // Generate room ID and set color first
@@ -578,7 +640,7 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
         try {
             console.log("[RTC] Joining game as guest...");
             isHostRef.current = false;
-            const pc = createPeerConnection();
+            const pc = await createPeerConnection();
 
             // Set up ondatachannel handler before setting remote description
             pc.ondatachannel = (event) => {
@@ -663,6 +725,9 @@ export function RTCProvider({ children }: { children: React.ReactNode }) {
                     offerMessage.payload as RTCSessionDescriptionInit
                 )
             );
+
+            // Procesar candidatos ICE pendientes después de establecer la descripción remota
+            await processPendingCandidates();
 
             console.log("[RTC] Creating and sending answer...");
             const answer = await pc.createAnswer();

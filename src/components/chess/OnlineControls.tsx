@@ -250,18 +250,34 @@ export const OnlineControls = () => {
         );
     };
 
+    // Modificar onOpenChange para preservar el modo en móvil
+    const onOpenChange = (isOpen: boolean) => {
+        setShowDialog(isOpen);
+        if (!isOpen && !isMobile) {
+            setGameMode(null);
+        }
+    }
+
+    // Componente para el botón flotante
+    const ConnectButton = () => (
+        <Button
+            onClick={() => setShowDialog(true)}
+            className="fixed bottom-6 right-6 shadow-lg rounded-full w-14 h-14 p-0 z-50"
+            size="icon"
+        >
+            <Users className="w-6 h-6" />
+        </Button>
+    );
+
     // Render logic
     if (isConnected) {
         return <ConnectedState />;
     }
-    const onOpenChange = (isOpen: boolean) => {
-        setShowDialog(isOpen);
-        if (!isOpen) {
-          setGameMode(null);
-        }
-    }
+
     return (
         <div className="w-full">
+            {/* Botón flotante siempre visible cuando no hay conexión */}
+            {!isConnected && <ConnectButton />}
 
             {/* Modal para crear/unirse a juego */}
             {isMobile ? (
@@ -273,6 +289,15 @@ export const OnlineControls = () => {
                         <div className="p-4">
                             <JoinGameUI />
                         </div>
+                        <DrawerFooter>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => setShowDialog(false)}
+                                className="w-full"
+                            >
+                                Cancel
+                            </Button>
+                        </DrawerFooter>
                     </DrawerContent>
                 </Drawer>
             ) : (
