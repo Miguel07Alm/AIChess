@@ -26,12 +26,15 @@ export const GameChatMobile = () => {
         if (!text.trim()) return;
         
         if (gameMode === "online") {
-            sendChatMessage({
+            const newMessage = {
                 text,
                 sender: playerColor,
                 timestamp: Date.now(),
-                isSystem: false
-            });
+                isSystem: false,
+            };            
+            setMessages([...messages, newMessage]);
+
+            sendChatMessage(newMessage);
         } else if (gameMode === "ai") {
             const newMessage: ChatMessage = {
                 text,
