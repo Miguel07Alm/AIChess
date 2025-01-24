@@ -3,7 +3,7 @@ import { useCallback, useState } from "react";
 import { Square as ChessSquare } from "chess.js";
 import { Card } from "@/components/ui/card";
 import { Square } from "./Square";
-import { CapturedPieces, GameInfo, MoveHistory, PIECE_VALUES, Timer } from "./GameInfo";
+import { CapturedPieces, GameStatus, MoveHistory, PIECE_VALUES, Timer } from "./GameInfo";
 import { useGame } from "@/contexts/GameContext";
 import { OnlineControls } from "./OnlineControls";
 import { useEffect } from "react";
@@ -15,12 +15,17 @@ import { useRTC } from "@/contexts/RTCContext";
 import { GameChat } from "./GameChat";
 import { ChevronDown } from "lucide-react";
 import { GameChatMobile } from "./GameChatMobile";
+import { GameStats } from "./GameStats";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+import { Button } from "../ui/button";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer";
+import { BarChart3 } from "lucide-react";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = ["8", "7", "6", "5", "4", "3", "2", "1"];
 
 // Primero añadimos un nuevo componente para el estado del juego
-const GameStatus = ({
+const GameOnlineStatus = ({
     playerColor,
     isYourTurn,
     isConnected,
@@ -203,50 +208,23 @@ const ChessBoard = () => {
     ]);
 
     return (
-        <div className="relative flex flex-col w-full max-w-7xl mx-auto p-2 sm:p-4 gap-4">
-            {/* Toolbar section */}
-            <div className="flex flex-col gap-4">
-                {/* Move history if exists */}
-                {moves.length > 0 && (
-                    <div className="w-full">
-                        <MoveHistory moves={moves} />
-                    </div>
-                )}
-
-                {/* Controls row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="h-full w-full relative flex flex-col p-1 sm:p-2 gap-1">
+            {/* Header section */}
+            <div className="flex-none grid grid-cols-[auto_1fr] gap-1">
+                {/* Game modes and controls */}
+                <div className="flex flex-col gap-1">
                     <GameModeSelector
                         selectedMode={gameMode}
                         onSelectMode={setGameMode}
                     />
-                    {gameMode === "online" && <OnlineControls />}
-                    <GameReviewControls />
-                </div>
-            </div>
-
-            {/* Main game section */}
-            <div className="flex flex-col lg:flex-row gap-4">
-                {/* Board section */}
-                <div className="flex-1">
-                    <Card className="p-2 sm:p-4 bg-background w-full">
-                        <div className="relative w-full max-w-[600px] mx-auto aspect-square">
-                            {gameMode === "online" && isConnected && (
-                                <GameStatus
-                                    playerColor={playerColor}
-                                    isYourTurn={currentTurn() === playerColor}
-                                    isConnected={isConnected}
-                                    isSpectator={isSpectator}
-                                />
-                            )}
-                            <div className="grid grid-cols-8 gap-0 w-full h-full rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-800">
-                                {renderSquares()}
-                            </div>
-                        </div>
-                    </Card>
+                    <div className="flex gap-1">
+                        {gameMode === "online" && <OnlineControls />}
+                        <GameReviewControls />
+                    </div>
                 </div>
 
-                {/* Side panel - Timer and Captured Pieces */}
-                <div className="w-full lg:w-[280px] flex flex-col gap-3">
+                {/* Timer and History */}
+                <div className="flex flex-col gap-1">
                     <Timer
                         timeWhite={timeWhite}
                         timeBlack={timeBlack}
@@ -254,26 +232,91 @@ const ChessBoard = () => {
                         gameMode={gameMode}
                         isConnected={isConnected}
                     />
-                    <CapturedPieces
-                        capturedPieces={capturedPieces}
-                        whitePoints={getPoints(capturedPieces.black)}
-                        blackPoints={getPoints(capturedPieces.white)}
-                    />
+                </div>
+                <MoveHistory moves={moves} />
+            </div>
+
+            {/* Main game section */}
+            <div className="flex-1 flex flex-col lg:flex-row gap-1 min-h-0">
+                {/* Board container - más grande en móvil */}
+                <div className="flex-1 flex items-center justify-center min-h-0">
+                    <Card className="w-full h-full max-h-[calc(100vh-120px)] lg:max-h-[calc(100vh-180px)] aspect-square p-1 sm:p-2 flex items-center justify-center bg-card">
+                        <div className="relative w-full h-full max-w-[min(95vh,600px)] aspect-square">
+                            {gameMode === "online" && isConnected && (
+                                <GameOnlineStatus
+                                    playerColor={playerColor}
+                                    isYourTurn={currentTurn() === playerColor}
+                                    isConnected={isConnected}
+                                    isSpectator={isSpectator}
+                                />
+                            )}
+                            <div className="grid grid-cols-8 w-full h-full rounded-lg overflow-hidden">
+                                {renderSquares()}
+                            </div>
+                        </div>
+                    </Card>
+                </div>
+
+                {/* Side panel - minimizado en móvil */}
+                <div className="lg:w-[240px] flex-none">
+                    {/* Panel móvil */}
+                    <div className="block lg:hidden space-y-1">
+                        <GameStatus game={game} />
+                        <CapturedPieces
+                            capturedPieces={capturedPieces}
+                            whitePoints={getPoints(capturedPieces.black)}
+                            blackPoints={getPoints(capturedPieces.white)}
+                        />
+                        <Drawer>
+                            <DrawerTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full flex items-center justify-between"
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <BarChart3 className="w-4 h-4" />
+                                        Game Stats
+                                    </span>
+                                    <ChevronDown className="h-4 w-4" />
+                                </Button>
+                            </DrawerTrigger>
+                            <DrawerContent className="h-[80vh]">
+                                <DrawerHeader>
+                                    <DrawerTitle>Game Statistics</DrawerTitle>
+                                </DrawerHeader>
+                                <div className="p-4 pt-0 h-full">
+                                    <GameStats game={game} moves={moves} />
+                                </div>
+                            </DrawerContent>
+                        </Drawer>
+                    </div>
+
+                    {/* Panel desktop */}
+                    <div className="hidden lg:flex flex-col gap-1 h-auto lg:h-full">
+                        <GameStatus game={game} />
+                        <CapturedPieces
+                            capturedPieces={capturedPieces}
+                            whitePoints={getPoints(capturedPieces.black)}
+                            blackPoints={getPoints(capturedPieces.white)}
+                        />
+                        <GameStats game={game} moves={moves} />
+                    </div>
                 </div>
             </div>
 
-            {/* Chat Components */}
+            {/* Chat components */}
             <div className="hidden md:block">
-                {(gameMode === "online" && isConnected || gameMode === "ai") && (
-                    <div className="fixed right-4 bottom-4">
+                {((gameMode === "online" && isConnected) ||
+                    gameMode === "ai") && (
+                    <div className="fixed right-4 bottom-4 z-50">
                         <GameChat />
                     </div>
                 )}
             </div>
             <div className="md:hidden">
-                {(gameMode === "online" && isConnected || gameMode === "ai") && (
-                    <GameChatMobile />
-                )}
+                {((gameMode === "online" && isConnected) ||
+                    gameMode === "ai") && <GameChatMobile />}
             </div>
         </div>
     );
@@ -281,6 +324,6 @@ const ChessBoard = () => {
 
 // Helper function for calculating points
 const getPoints = (pieces: string[]) => 
-    pieces.reduce((acc, piece) => PIECE_VALUES[piece as keyof typeof PIECE_VALUES] || 0, 0);
+    pieces.reduce((_, piece) => PIECE_VALUES[piece as keyof typeof PIECE_VALUES] || 0, 0);
 
 export default ChessBoard;

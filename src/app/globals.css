@@ -59,6 +59,7 @@ body {
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
   }
 }
 
@@ -82,5 +83,40 @@ body {
   
   .piece-shadow-selected {
     filter: drop-shadow(0 10px 15px rgb(0 0 0 / 0.2));
+  }
+
+  .square-hover {
+    @apply ring-2 ring-emerald-500/30 shadow-lg;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: .7;
+    }
+  }
+
+  .drag-ghost {
+    @apply fixed pointer-events-none z-50 opacity-90;
+    transform-origin: center center;
+    transition: transform 0.1s ease-out;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    &::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+      background-color: rgb(0 0 0 / 0.2);
+      border-radius: 3px;
+    }
   }
 }

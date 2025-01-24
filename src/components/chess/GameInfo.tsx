@@ -57,7 +57,7 @@ const PieceBadge = ({ piece, color }: { piece: string, color: 'w' | 'b' }) => {
   );
 };
 
-const GameStatus = ({ game }: { game: Chess }) => {
+export const GameStatus = ({ game }: { game: Chess }) => {
   const statusInfo = () => {
     if (game.isCheckmate()) {
       return {
@@ -114,11 +114,18 @@ const GameStatus = ({ game }: { game: Chess }) => {
         }
       }
     }
-    return null
+    return {
+      icon: Crown,
+      text: game.turn() === 'w' ? 'White to move' : 'Black to move',
+      class: 'bg-gradient-to-r from-blue-400 to-blue-500',
+      animation: {
+        scale: [1, 1.05, 1],
+        opacity: [0.9, 1, 0.9],
+      }
+    }
   }
 
   const status = statusInfo()
-  if (!status) return null
 
   const Icon = status.icon
 
@@ -149,86 +156,103 @@ const GameStatus = ({ game }: { game: Chess }) => {
     </AnimatePresence>
   )
 }
-
-export const Timer = ({ timeWhite, timeBlack, game, gameMode, isConnected }: {
-  timeWhite: number;
-  timeBlack: number;
-  game: Chess;
-  gameMode: 'ai' | 'online' | null;
-  isConnected: boolean;
-}) => (
-  <Card className="p-3">
+interface TimerProps {
+  timeWhite: number,
+  timeBlack: number,
+  game: Chess,
+  gameMode: 'ai' | 'online' | null,
+  isConnected: boolean
+}
+export const Timer = ({ timeWhite, timeBlack, game, gameMode, isConnected }: TimerProps) => (
+  <Card className="p-2 bg-background/95 backdrop-blur-md border border-border/50">
     <div className="flex items-center justify-between mb-2">
-      <h3 className="text-base font-medium">Timer</h3>
-      {gameMode && (
-        <Badge variant="secondary" className="text-xs">
-          {gameMode === 'ai' ? 'VS AI' : (isConnected ? 'Online' : 'Waiting...')}
-        </Badge>
-      )}
+      <Badge 
+        variant={gameMode === 'ai' ? "default" : (isConnected ? "success" : "warning")}
+        className="text-xs animate-in fade-in duration-300"
+      >
+        {gameMode === 'ai' ? 'VS AI' : (isConnected ? 'Online' : 'Connecting...')}
+      </Badge>
     </div>
     <div className="grid grid-cols-2 gap-2">
-      <div className={cn(
-        "flex flex-col items-center p-2 rounded-lg transition-colors",
-        game.turn() === 'w' ? 'bg-[#007AFF]/10' : ''
-      )}>
-        <span className="font-mono text-xl font-semibold">{formatTime(timeWhite)}</span>
+      <motion.div 
+        animate={{
+          scale: game.turn() === 'w' ? 1.02 : 1,
+          backgroundColor: game.turn() === 'w' ? 'rgb(59 130 246 / 0.1)' : 'transparent'
+        }}
+        className={cn(
+          "flex flex-col items-center p-2 rounded-lg",
+        )}
+      >
+        <span className="font-mono text-lg font-semibold">{formatTime(timeWhite)}</span>
         <span className="text-xs text-muted-foreground">White</span>
-      </div>
-      <div className={cn(
-        "flex flex-col items-center p-2 rounded-lg transition-colors",
-        game.turn() === 'b' ? 'bg-[#007AFF]/10' : ''
-      )}>
-        <span className="font-mono text-xl font-semibold">{formatTime(timeBlack)}</span>
+      </motion.div>
+      
+      <motion.div 
+        animate={{
+          scale: game.turn() === 'b' ? 1.02 : 1,
+          backgroundColor: game.turn() === 'b' ? 'rgb(59 130 246 / 0.1)' : 'transparent'
+        }}
+        className={cn(
+          "flex flex-col items-center p-2 rounded-lg",
+        )}
+      >
+        <span className="font-mono text-lg font-semibold">{formatTime(timeBlack)}</span>
         <span className="text-xs text-muted-foreground">Black</span>
-      </div>
+      </motion.div>
     </div>
   </Card>
 );
+          
 
 export const MoveHistory = ({ moves }: { moves: Move[] }) => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll cuando se añaden nuevos movimientos
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollLeft = scrollContainerRef.current.scrollWidth;
-    }
-  }, [moves]);
+    // Auto-scroll cuando se añaden nuevos movimientos
+    useEffect(() => {
+        if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollLeft =
+                scrollContainerRef.current.scrollWidth;
+        }
+    }, [moves]);
 
-  return (
-    <Card className="p-2">
-      <div 
-        ref={scrollContainerRef}
-        className="overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
-      >
-        <div className="inline-flex gap-2 px-1 h-8 items-center">
-          {moves.map((move, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className={`
-                flex items-center gap-1 text-sm
-                ${i % 2 === 0 ? 'mr-1' : 'mr-3'}
-              `}
+    return (
+        <Card className="p-2 col-span-2">
+            <h3 className="text-xs text-muted-foreground font-medium p-2">
+                Move History
+            </h3>
+            
+            <div
+                ref={scrollContainerRef}
+                className="overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
             >
-              {i % 2 === 0 && (
-                <span className="text-muted-foreground font-mono text-xs">
-                  {Math.floor(i/2 + 1)}.
-                </span>
-              )}
-              <span className="font-medium bg-muted/50 px-1.5 py-0.5 rounded">
-                {move.san}
-              </span>
-            </motion.div>
-          ))}
-          {moves.length > 0 && (
-            <div className="w-4 h-full flex-shrink-0" />
-          )}
-        </div>
-      </div>
-    </Card>
-  );
+                <div className="inline-flex gap-2 px-1 h-8 items-center">
+                    {moves.map((move, i) => (
+                        <motion.div
+                            key={i}
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className={`
+                flex items-center gap-1 text-sm
+                ${i % 2 === 0 ? "mr-1" : "mr-3"}
+              `}
+                        >
+                            {i % 2 === 0 && (
+                                <span className="text-muted-foreground font-mono text-xs">
+                                    {Math.floor(i / 2 + 1)}.
+                                </span>
+                            )}
+                            <span className="font-medium bg-muted/50 px-1.5 py-0.5 rounded">
+                                {move.san}
+                            </span>
+                        </motion.div>
+                    ))}
+                    {moves.length > 0 && (
+                        <div className="w-4 h-full flex-shrink-0" />
+                    )}
+                </div>
+            </div>
+        </Card>
+    );
 };
 
 export const CapturedPieces = ({
@@ -240,62 +264,38 @@ export const CapturedPieces = ({
   whitePoints: number;
   blackPoints: number;
 }) => (
-  <Card className="p-3">
-    <h3 className="text-base font-medium mb-3">Captured Pieces</h3>
-    <div className="space-y-4">
+  <Card className="p-2 min-h-[83px] max-h-[83px]">
+    <div className="grid grid-cols-2 gap-1">
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm text-muted-foreground">Black pieces</span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Black</span>
           {whitePoints > 0 && (
-            <span className="text-sm font-medium">+{whitePoints}</span>
+            <span className="text-xs font-medium">+{whitePoints}</span>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {capturedPieces.white.map((piece, i) => (
-            <PieceBadge key={i} piece={piece} color="w" />
-          ))}
+        <div className="overflow-x-auto scrollbar-thin">
+          <div className="flex gap-1 min-w-min p-1">
+            {capturedPieces.white.map((piece, i) => (
+              <PieceBadge key={i} piece={piece} color="w" />
+            ))}
+          </div>
         </div>
       </div>
       <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm text-muted-foreground">White pieces</span>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">White</span>
           {blackPoints > 0 && (
-            <span className="text-sm font-medium">+{blackPoints}</span>
+            <span className="text-xs font-medium">+{blackPoints}</span>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          {capturedPieces.black.map((piece, i) => (
-            <PieceBadge key={i} piece={piece} color="b" />
-          ))}
+        <div className="overflow-x-auto scrollbar-thin">
+          <div className="flex gap-1 min-w-min p-1">
+            {capturedPieces.black.map((piece, i) => (
+              <PieceBadge key={i} piece={piece} color="b" />
+            ))}
+          </div>
         </div>
       </div>
     </div>
   </Card>
 );
-
-// Main GameInfo component simplified
-export const GameInfo = ({ moves, capturedPieces, timeWhite, timeBlack, game, gameMode, isConnected }: GameInfoProps) => {
-  const getPoints = (pieces: string[]) => 
-    pieces.reduce((acc, piece) => acc + PIECE_VALUES[piece as keyof typeof PIECE_VALUES], 0);
-
-  const whitePoints = getPoints(capturedPieces.black);
-  const blackPoints = getPoints(capturedPieces.white);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <Timer
-        timeWhite={timeWhite}
-        timeBlack={timeBlack}
-        game={game}
-        gameMode={gameMode}
-        isConnected={isConnected}
-      />
-      <GameStatus game={game} />
-      <CapturedPieces
-        capturedPieces={capturedPieces}
-        whitePoints={whitePoints}
-        blackPoints={blackPoints}
-      />
-    </div>
-  );
-};
