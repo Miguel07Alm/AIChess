@@ -1,9 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chess AI App
 
-## Getting Started
+A modern chess application built with Next.js that features both AI and online multiplayer gameplay modes.
 
-First, run the development server:
+## Features
 
+- 🤖 Play against an AI powered by OpenAI
+- 🎮 Real-time online multiplayer
+- 💬 In-game chat with AI strategic advice
+- 📊 Game statistics and analysis
+- 🎨 Dark/Light theme support
+- 📱 Responsive design for mobile and desktop
+- ♟️ Drag and drop piece movement
+- ⏱️ Game timer support
+- 🔄 Move history and game review
+
+## Prerequisites
+
+Before you begin, ensure you have:
+- Node.js 18+ installed
+- An OpenAI API key for AI gameplay features
+
+## Environment Setup
+
+Create a `.env` file in the root directory with:
+
+```env
+OPENAI_API_KEY=your_api_key_here
+```
+
+This API key is required for:
+- AI opponent moves
+- Strategic chat advice
+- Game analysis
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/chess-ai-app.git
+cd chess-ai-app
+```
+
+2. Install dependencies:
+```bash
+npm install
+# or
+yarn install
+# or
+pnpm install
+# or
+bun install
+```
+
+3. Run the development server:
 ```bash
 npm run dev
 # or
@@ -14,23 +63,35 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The application will be available at [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Game Modes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### AI Mode
+- Play against an AI opponent powered by OpenAI
+- Receive strategic advice and move analysis
+- Multiple difficulty levels (coming soon)
 
-## Learn More
+### Online Mode
+- Real-time multiplayer games
+- WebRTC peer-to-peer connection
+- In-game chat with opponents
+- Spectator mode support
 
-To learn more about Next.js, take a look at the following resources:
+## Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Framework**: Next.js 15 with App Router
+- **UI**: TailwindCSS + Shadcn/ui
+- **State Management**: React Context
+- **Multiplayer**: WebRTC
+- **AI Integration**: OpenAI API + Vercel AI SDK
+- **Animations**: Framer Motion
+- **Drag & Drop**: Atlaskit Pragmatic Drag and Drop
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Contributing
 
-## Deploy on Vercel
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is licensed under the MIT License - See [LICENSE](LICENSE) for details
