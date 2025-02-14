@@ -56,7 +56,6 @@ export const GameModeSelector = ({ selectedMode, onSelectMode }: Props) => {
                           variant={
                               selectedMode === mode.id ? "default" : "outline"
                           }
-                          disabled={mode.id === "ai"}
                           onClick={() => handleModeSelect(mode.id)}
                           className={cn(
                               "w-full h-auto flex flex-col items-center gap-1 p-2",
@@ -67,8 +66,6 @@ export const GameModeSelector = ({ selectedMode, onSelectMode }: Props) => {
                           {mode.icon}
                           <span className="text-xs font-medium">
                               {mode.label}
-                              {mode.id === "ai" && 
-                                  <span className="text-[10px] text-muted-foreground"> (coming soon)</span>}
                           </span>
                           <span className="text-[10px] text-muted-foreground hidden sm:block">
                               {mode.description}

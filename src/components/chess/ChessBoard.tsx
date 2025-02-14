@@ -1,25 +1,39 @@
 "use client";
-import { useCallback, useState } from "react";
-import { Square as ChessSquare } from "chess.js";
+import { useCallback, useState, useEffect } from "react";
+import { Square as ChessSquare, Color } from "chess.js";
 import { Card } from "@/components/ui/card";
 import { Square } from "./Square";
-import { CapturedPieces, GameStatus, MoveHistory, PIECE_VALUES, Timer } from "./GameInfo";
+import { CapturedPieces, MoveHistory, PIECE_VALUES } from "./GameInfo";
 import { useGame } from "@/contexts/GameContext";
 import { OnlineControls } from "./OnlineControls";
-import { useEffect } from "react";
 import { toast } from "sonner";
 import { GameModeSelector } from "./GameModeSelector";
 import { motion } from "framer-motion";
 import { GameReviewControls } from "./GameReviewControls";
 import { useRTC } from "@/contexts/RTCContext";
 import { GameChat } from "./GameChat";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Clock, ArrowLeft } from "lucide-react";
 import { GameChatMobile } from "./GameChatMobile";
 import { GameStats } from "./GameStats";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "../ui/collapsible";
 import { Button } from "../ui/button";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer";
+import {
+    Drawer,
+    DrawerContent,
+    DrawerHeader,
+    DrawerTitle,
+    DrawerTrigger,
+} from "../ui/drawer";
 import { BarChart3 } from "lucide-react";
+import { ThemeToggle } from "../ui/theme-toggle";
+import { cn, formatTime } from "@/lib/utils";
+import { GameModeScreen } from "./GameModeScreen";
+import { GameStatus } from "./GameStatus";
+import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = ["8", "7", "6", "5", "4", "3", "2", "1"];
@@ -83,6 +97,59 @@ const GameOnlineStatus = ({
     </div>
 );
 
+// Add this component after GameOnlineStatus
+const WaitingOverlay = () => (
+    <div className="absolute inset-0 flex items-center justify-center bg-black/30 backdrop-blur-sm z-10">
+        <div className="bg-card/95 backdrop-blur-sm px-6 py-4 rounded-lg shadow-lg border border-border/50 flex flex-col items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-yellow-500/90 animate-pulse" />
+            <p className="text-sm font-medium text-center">
+                Waiting for opponent to join...
+            </p>
+        </div>
+    </div>
+);
+
+const Timer = ({
+    color,
+    currentTurn,
+    time,
+    position,
+}: {
+    color: Color;
+    currentTurn: Color;
+    time: number;
+    position: "top" | "bottom";
+}) => (
+    <motion.div
+        animate={{
+            scale: currentTurn === color ? 1.05 : 1,
+            color: currentTurn === color ? "var(--primary)" : "inherit",
+        }}
+        className={cn(
+            "absolute z-20 flex items-center gap-2 px-4 py-2",
+            "bg-card/95 backdrop-blur-sm rounded-lg shadow-lg border border-border/50 opacity-50 sm:opacity-100 hover:opacity-80",
+            position === "top" ? "top-2 right-2" : "bottom-2 right-2"
+        )}
+    >
+        <Clock className="w-4 h-4" />
+        <span className="font-mono font-medium">{formatTime(time)}</span>
+        {currentTurn === color && (
+            <motion.div
+                className="absolute inset-0 rounded-lg border-2 border-primary"
+                animate={{
+                    opacity: [1, 0.5, 1],
+                    scale: [1, 1.02, 1],
+                }}
+                transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                }}
+            />
+        )}
+    </motion.div>
+);
+
 const ChessBoard = () => {
     const {
         position,
@@ -100,25 +167,31 @@ const ChessBoard = () => {
         setGameMode,
         boardOrientation,
         lastMove,
+        isGameStarted,
     } = useGame();
 
-    const { isConnected, playerColor, sendMove, isSpectator } = useRTC();
+    const { isConnected, playerColor, sendMove, isSpectator, isHost } =
+        useRTC();
 
     const canMove = useCallback(() => {
         if (gameMode === "ai") return currentTurn() === "w"; // Player always white in AI mode
         if (gameMode === "online") {
             if (isSpectator) return false;
-            console.log("[Chess] Can move check:", {
-                isConnected,
-                currentTurn: currentTurn(),
-                playerColor,
-                result: isConnected && currentTurn() === playerColor,
-            });
+            if (!isConnected) return false;
+            if (isHost && !isGameStarted) return false; // Prevent host from moving before game starts
             return isConnected && currentTurn() === playerColor;
         }
         return true;
-    }, [gameMode, isConnected, currentTurn, playerColor, isSpectator]);
-
+    }, [
+        gameMode,
+        isConnected,
+        currentTurn,
+        playerColor,
+        isSpectator,
+        isHost,
+        isGameStarted,
+    ]);
+    
     const handleMove = useCallback(
         async (from: ChessSquare, to: ChessSquare) => {
             if (!canMove()) {
@@ -150,6 +223,8 @@ const ChessBoard = () => {
         },
         [canMove, makeMove, gameMode, sendMove, playerColor, isConnected]
     );
+
+    // TODO: CORREGIR BUG DE SQUARE DE DRAG AND DROP DONDE LA IMAGEN SE PONE EN EL TOP-LEFT DE LA PANTALLA
 
     // Corregir el renderSquares para manejar correctamente la orientación
     const renderSquares = useCallback(() => {
@@ -207,41 +282,47 @@ const ChessBoard = () => {
         lastMove,
     ]);
 
-    return (
-        <div className="h-full w-full relative flex flex-col p-1 sm:p-2 gap-1">
-            {/* Header section */}
-            <div className="flex-none grid grid-cols-[auto_1fr] gap-1">
-                {/* Game modes and controls */}
-                <div className="flex flex-col gap-1">
-                    <GameModeSelector
-                        selectedMode={gameMode}
-                        onSelectMode={setGameMode}
-                    />
-                    <div className="flex gap-1">
-                        {gameMode === "online" && <OnlineControls />}
-                        <GameReviewControls />
-                    </div>
-                </div>
+    // Si no hay modo seleccionado, mostrar la pantalla de selección
+    if (!gameMode) {
+        return <GameModeScreen />;
+    }
 
-                {/* Timer and History */}
-                <div className="flex flex-col gap-1">
-                    <Timer
-                        timeWhite={timeWhite}
-                        timeBlack={timeBlack}
-                        game={game}
-                        gameMode={gameMode}
-                        isConnected={isConnected}
-                    />
-                </div>
-                <MoveHistory moves={moves} />
+    return (
+        <div className="h-full w-full relative flex flex-col p-1 sm:p-2 gap-1 overflow-hidden">
+            {/* Botón de volver */}
+            <div className="fixed top-4 left-4 z-[60]">
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 opacity-75 hover:opacity-100"
+                    onClick={() => setGameMode(null)}
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                </Button>
             </div>
+            {gameMode === "online" && <OnlineControls />}
+
+            <MoveHistory moves={moves} />
 
             {/* Main game section */}
-            <div className="flex-1 flex flex-col lg:flex-row gap-1 min-h-0">
-                {/* Board container - más grande en móvil */}
-                <div className="flex-1 flex items-center justify-center min-h-0">
-                    <Card className="w-full h-full max-h-[calc(100vh-120px)] lg:max-h-[calc(100vh-180px)] aspect-square p-1 sm:p-2 flex items-center justify-center bg-card">
+            <div className="flex-1 flex flex-col lg:flex-row gap-1 min-h-0 z-20 overflow-hidden w-full">
+                <div className="relative flex-1 flex items-center justify-center min-h-0">
+                    <Card className="relative w-full h-full max-h-[calc(100vh-120px)] lg:max-h-[calc(100vh-180px)] aspect-square p-1 sm:p-2 flex items-center justify-center backdrop-blur-sm">
+                        <Timer
+                            currentTurn={currentTurn()}
+                            color="b"
+                            time={timeBlack}
+                            position="top"
+                        />
                         <div className="relative w-full h-full max-w-[min(95vh,600px)] aspect-square">
+                            {/* Contenedor para GameStatus */}
+                            <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
+                                <div className="w-full max-w-[80%]">
+                                    <GameStatus game={game} />
+                                </div>
+                            </div>
+                            
+                            {/* Game status overlays */}
                             {gameMode === "online" && isConnected && (
                                 <GameOnlineStatus
                                     playerColor={playerColor}
@@ -250,18 +331,27 @@ const ChessBoard = () => {
                                     isSpectator={isSpectator}
                                 />
                             )}
+                            {gameMode === "online" &&
+                                !isGameStarted &&
+                                isHost && <WaitingOverlay />}
+
+                            {/* Chess board grid */}
                             <div className="grid grid-cols-8 w-full h-full rounded-lg overflow-hidden">
                                 {renderSquares()}
                             </div>
                         </div>
+                        <Timer
+                            currentTurn={currentTurn()}
+                            color="w"
+                            time={timeWhite}
+                            position="bottom"
+                        />
                     </Card>
                 </div>
 
                 {/* Side panel - minimizado en móvil */}
                 <div className="lg:w-[240px] flex-none">
-                    {/* Panel móvil */}
                     <div className="block lg:hidden space-y-1">
-                        <GameStatus game={game} />
                         <CapturedPieces
                             capturedPieces={capturedPieces}
                             whitePoints={getPoints(capturedPieces.black)}
@@ -294,7 +384,6 @@ const ChessBoard = () => {
 
                     {/* Panel desktop */}
                     <div className="hidden lg:flex flex-col gap-1 h-auto lg:h-full">
-                        <GameStatus game={game} />
                         <CapturedPieces
                             capturedPieces={capturedPieces}
                             whitePoints={getPoints(capturedPieces.black)}
@@ -321,9 +410,10 @@ const ChessBoard = () => {
         </div>
     );
 };
-
 // Helper function for calculating points
-const getPoints = (pieces: string[]) => 
-    pieces.reduce((_, piece) => PIECE_VALUES[piece as keyof typeof PIECE_VALUES] || 0, 0);
-
+const getPoints = (pieces: string[]) =>
+    pieces.reduce(
+        (_, piece) => PIECE_VALUES[piece as keyof typeof PIECE_VALUES] || 0,
+        0
+    );
 export default ChessBoard;

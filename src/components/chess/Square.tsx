@@ -122,8 +122,16 @@ export const Square = ({
                     element.offsetHeight / 2
                 );
 
+                // Eliminar el ghost inmediatamente después de ser utilizado
+                requestAnimationFrame(() => {
+                    if (ghost && ghost.parentNode) {
+                        ghost.remove();
+                        ghostRef.current = null;
+                    }
+                });
+
                 return () => {
-                    if (ghostRef.current) {
+                    if (ghostRef.current && ghostRef.current.parentNode) {
                         ghostRef.current.remove();
                         ghostRef.current = null;
                     }
@@ -136,13 +144,17 @@ export const Square = ({
                 onSelect(square);
             },
             onDrag: () => {
-                // Puedes agregar feedback visual durante el drag si es necesario
+                // Eliminamos cualquier ghost que pudiera haber quedado
+                if (ghostRef.current && ghostRef.current.parentNode) {
+                    ghostRef.current.remove();
+                    ghostRef.current = null;
+                }
             },
             onDrop: () => {
                 if (playerColor !== turn && gameMode === "online") return;
                 requestAnimationFrame(() => {
                     setIsDragging(false);
-                    if (ghostRef.current) {
+                    if (ghostRef.current && ghostRef.current.parentNode) {
                         ghostRef.current.remove();
                         ghostRef.current = null;
                     }

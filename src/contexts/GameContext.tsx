@@ -12,7 +12,8 @@ import { useRTC } from "./RTCContext";
 import { toast } from "sonner";
 import { ChatMessage, GameMove } from "@/types/webrtc";
 import { experimental_useObject as useObject } from "ai/react";
-import { ChessSchema, ChessSchemaPayload } from "@/types/chat";
+import { AIChatPayload, ChessSchema, ChessSchemaPayload } from "@/types/chat";
+import { AIStateManager, createAIStateManager, createCleanAIState } from "@/app/lib/ai-state";
 
 type BoardPosition = (Piece | null)[][];
 
@@ -29,8 +30,8 @@ interface GameContextType {
     getLegalMoves: (square: Square) => Square[];
     currentTurn: () => Color;
     lastMove: { from: Square; to: Square } | null;
-    gameMode: "ai" | "online" | null;
-    setGameMode: (mode: "ai" | "online" | null) => void;
+    gameMode: "ai" | "online" | "practice" | null;
+    setGameMode: (mode: "ai" | "online" | "practice" | null) => void;
     isGameStarted: boolean;
     setIsGameStarted: (started: boolean) => void;
     gameHistory: {
@@ -50,12 +51,14 @@ interface GameContextType {
     setMessages: Dispatch<ChatMessage[]>;
     aiThinking: boolean;
     sendAIMessage: (messages: ChatMessage[]) => Promise<void>;
+    setGameover: Dispatch<boolean>;
+    gameOver: boolean;
 }
 
 const GameContext = createContext<GameContextType | null>(null);
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
-    const [gameMode, setGameMode] = useState<"ai" | "online" | null>(null);
+    const [gameMode, setGameMode] = useState<"ai" | "online" | "practice" | null>(null);
     const [game] = useState(new Chess());
     const [position, setPosition] = useState<(Piece | null)[][]>(game.board());
     const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
@@ -76,6 +79,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const [gameHistory, setGameHistory] = useState<
         GameContextType["gameHistory"]
     >([]);
+    const [aiState] = useState(() => createAIStateManager());
+    const [aiStateData, setAiStateData] = useState(createCleanAIState());
     const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1);
     const [isReviewing, setIsReviewing] = useState(false);
 
@@ -93,6 +98,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     );
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [aiThinking, setAiThinking] = useState(false);
+    const [gameOver, setGameOver] = useState(false);
 
     // Sincronizar con RTCContext
     useEffect(() => {
@@ -116,7 +122,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const shouldRunTimer =
             isGameStarted &&
-            (gameMode === "ai" || (gameMode === "online" && isConnected));
+            (gameMode === "ai" || gameMode === "practice" || (gameMode === "online" && isConnected));
 
         if (!shouldRunTimer) return;
 
@@ -193,8 +199,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 const chatPayload: ChessSchemaPayload = {
                     moves: movesList,
                     playerColor: playerColor as Color,
-                    currenBoard: boardState,
+                    currentBoard: boardState,
                     lastMove: lastMove ? `${lastMove.from}->${lastMove.to}` : null,
+                    aiStateData: aiState.toJSON() 
                 };
 
                 const res = await fetch("/api/chess/move", {
@@ -362,8 +369,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                         const chatPayload: ChessSchemaPayload = {
                             moves: movesList,
                             playerColor: playerColor as Color,
-                            currenBoard: boardState,
+                            currentBoard: boardState,
                             lastMove: lastMove ? `${lastMove.from}->${lastMove.to}` : null,
+                            aiStateData: aiState.toJSON() // Usar estado serializado
                         };
                         const res = await fetch("/api/chess/analysis", {
                             method: "POST",
@@ -372,10 +380,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                             },
                             body: JSON.stringify(chatPayload),
                         });
-                        const {willTalk, comment: AIComment}: {
-                            willTalk: boolean;
-                            comment: string;
-                        } = await res.json();
+                        const {willTalk, comment: AIComment, updatedState} = await res.json();
                         console.log("🚀 ~ willTalk:", willTalk)
                         if (willTalk && AIComment) {
                             setMessages([
@@ -387,6 +392,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                                     isSystem: true,
                                 },
                             ]);
+                        }
+                        // Actualizar el estado local con la respuesta del servidor
+                        if (updatedState) {
+                            aiState.loadState(updatedState);
+                            setAiStateData(updatedState);
                         }
                         // Usar setTimeout para dar tiempo a que la UI se actualice
                         setTimeout(async () => {
@@ -438,17 +448,19 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
             // Obtener el último movimiento en notación algebraica
             const lastMoveStr = moves.length > 0 ? moves[moves.length - 1].san : null;
+            const payloadChat: AIChatPayload = {
+                history: recentMessages,
+                currentBoard: boardState,
+                lastMove: lastMoveStr,
+                playerColor: playerColor || "w",
+                aiStateData: aiState.toJSON(),
+            };
             const res = await fetch("/api/chess/chat", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
-                body: JSON.stringify({
-                    history: recentMessages,
-                    currentBoard: boardState,
-                    lastMove: lastMoveStr,
-                    playerColor: playerColor || "w",
-                }),
+                body: JSON.stringify(payloadChat),
             });
             const {text: AIText}: {
                 text: string;
@@ -504,6 +516,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 setCurrentHistoryIndex(-1);
                 setIsReviewing(false);
                 setIsGameStarted(true);
+                aiState.clearAllGames();
             },
             onOpponentDisconnect: () => {
                 console.log("[Game] Opponent disconnected");
@@ -523,6 +536,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 setIsGameStarted(false);
                 // Finalmente cambiar el modo
                 setGameMode(null);
+                aiState.clearAllGames();
             },
             onChatMessage: (message: ChatMessage) => {
                 console.log("[Game] Received chat message:", message);
@@ -563,6 +577,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         // Reset game state
         game.reset();
+        aiState.clearAllGames();
         setPosition(game.board());
         setMoves([]);
         setCapturedPieces({ white: [], black: [] });
@@ -577,6 +592,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         setMessages([]); // Reset messages también
 
         if (gameMode === "ai") {
+            setBoardOrientation("white");
+            setPlayerColor("w");
+            setIsGameStarted(true);
+        } else if (gameMode === "practice") {
             setBoardOrientation("white");
             setPlayerColor("w");
             setIsGameStarted(true);
@@ -647,10 +666,6 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const startReview = useCallback(() => {
         setIsReviewing(true);
-        console.log(
-            "🚀 ~ startReview ~ gameHistory.length:",
-            gameHistory.length
-        );
         navigateHistory(gameHistory.length - 1);
     }, [setIsReviewing, gameHistory, navigateHistory]);
 
@@ -691,6 +706,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 setMessages,
                 aiThinking,
                 sendAIMessage,
+                setGameover: setGameOver,
+                gameOver
             }}
         >
             {children}

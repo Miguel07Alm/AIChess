@@ -75,8 +75,8 @@ export const GameChat = () => {
                         "flex flex-col shadow-lg transition-all duration-200",
                         isMinimized ? "h-[60px] w-[300px]" : "h-[500px] w-[400px]"
                     )}>
-                        {/* Header */}
-                        <div className="flex items-center justify-between p-3">
+                        {/* Header sin cambios */}
+                        <div className="flex items-center justify-between p-3 flex-shrink-0">
                             <h3 className="font-medium flex items-center gap-2">
                                 <MessageSquare className="w-4 h-4" />
                                 Game Chat
@@ -109,16 +109,16 @@ export const GameChat = () => {
                             </div>
                         </div>
 
-                        {/* Chat content - solo visible cuando no está minimizado */}
+                        {/* Chat content modificado */}
                         <AnimatePresence>
                             {!isMinimized && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0 }}
                                     animate={{ opacity: 1, height: "auto" }}
                                     exit={{ opacity: 0, height: 0 }}
-                                    className="flex-1 flex flex-col"
+                                    className="flex-1 flex flex-col min-h-0" // Añadido min-h-0
                                 >
-                                    <ScrollArea className="flex-1 p-3" ref={scrollRef}>
+                                    <div className="flex-1 overflow-y-auto p-3" ref={scrollRef}>
                                         <div className="space-y-3">
                                             {messages.map((msg, i) => (
                                                 <motion.div
@@ -147,9 +147,9 @@ export const GameChat = () => {
                                                 </motion.div>
                                             ))}
                                         </div>
-                                    </ScrollArea>
+                                    </div>
 
-                                    <div className="border-t bg-background/95"></div>
+                                    <div className="border-t bg-background/95 p-2 flex-shrink-0">
                                         <form
                                             onSubmit={(e) => {
                                                 e.preventDefault();
@@ -158,17 +158,17 @@ export const GameChat = () => {
                                                     setInput('');
                                                 }
                                             }}
-                                            className="flex gap-2 px-2"
+                                            className="flex gap-2"
                                         >
                                             <Input
                                                 value={input}
                                                 onChange={(e) => setInput(e.target.value)}
                                                 placeholder="Type a message..."
-                                                className="flex-1 focus:ring-0 focus:ring-offset-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none"
+                                                className="flex-1"
                                             />
-                                            <button type="submit">
-                                                <Send className="w-5 h-5" />
-                                            </button>
+                                            <Button type="submit" size="icon">
+                                                <Send className="w-4 h-4" />
+                                            </Button>
                                         </form>
                                         {aiThinking && (
                                             <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
@@ -176,6 +176,7 @@ export const GameChat = () => {
                                                 AI is thinking...
                                             </div>
                                         )}
+                                    </div>
                                 </motion.div>
                             )}
                         </AnimatePresence>

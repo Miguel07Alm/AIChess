@@ -144,54 +144,45 @@ export const OnlineControls = () => {
     }
 
     const ConnectedState = () => (
-        <Card className="p-4">
-            <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-green-500 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium truncate">
-                                Room: {roomId}
-                            </span>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(roomId!);
-                                    toast.success("Room ID copied");
-                                }}
-                            >
-                                <Copy className="w-3 h-3" />
-                            </Button>
+        <div className="fixed top-4 left-4 z-50">
+            <Card className="p-4 shadow-lg backdrop-blur-sm bg-background/95">
+                <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-green-500 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium truncate">
+                                    Room: {roomId}
+                                </span>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(roomId!);
+                                        toast.success("Room ID copied");
+                                    }}
+                                >
+                                    <Copy className="w-3 h-3" />
+                                </Button>
+                            </div>
+                            {expiresIn && expiresIn < 300 && (
+                                <span className="text-xs text-yellow-500">
+                                    Expires in {Math.floor(expiresIn / 60)}m {expiresIn % 60}s
+                                </span>
+                            )}
                         </div>
-                        {expiresIn && expiresIn < 300 && (
-                            <span className="text-xs text-yellow-500">
-                                Expires in {Math.floor(expiresIn / 60)}m{" "}
-                                {expiresIn % 60}s
-                            </span>
-                        )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <span className={`text-sm ${isConnected ? "text-green-500" : "text-yellow-500"}`}>
+                            {playerColor === "w" ? "Playing as White" : "Playing as Black"}
+                        </span>
+                        <Button size="sm" variant="destructive" onClick={handleLeaveGame}>
+                            Leave
+                        </Button>
                     </div>
                 </div>
-                <div className="flex items-center justify-between">
-                    <span
-                        className={`text-sm ${
-                            isConnected ? "text-green-500" : "text-yellow-500"
-                        }`}
-                    >
-                        {playerColor === "w"
-                            ? "Playing as White"
-                            : "Playing as Black"}
-                    </span>
-                    <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={handleLeaveGame}
-                    >
-                        Leave
-                    </Button>
-                </div>
-            </div>
-        </Card>
+            </Card>
+        </div>
     );
 
     const JoinGameUI = () => {
